@@ -22,16 +22,9 @@ st.markdown("""
         padding: 20px;
     }
 
-    /* Logo */
-    .logo {
-        display: block;
-        margin: 0 auto 20px auto;
-        max-width: 300px;
-    }
-
     /* Títulos */
     h1 {
-        color: #FF6200; /* Cor laranja do logo */
+        color: #FF6200;
         font-size: 2.5rem;
         font-weight: 700;
         text-align: center;
@@ -56,14 +49,14 @@ st.markdown("""
     }
 
     /* Estilo dos inputs */
-    .stTextInput, .stNumberInput, .stSelectbox {
+    .stTextInput, .stNumberInput, .stSelectbox, .stCheckbox {
         margin-bottom: 15px;
     }
 
     /* Estilo dos botões */
     .stButton>button {
         background-color: #FF6200;
-        color: #333333; /* Texto em cinza escuro para melhor contraste */
+        color: #333333;
         font-weight: 600;
         border: none;
         border-radius: 5px;
@@ -155,8 +148,8 @@ def calculate_q(loads, combination_str):
         q_total += load_value * factor
     return round(q_total, 3)
 
-# Função para gerar combinações de carga (mínimo 40)
-def generate_combinations(loads):
+# Função para gerar combinações de carga com base nos tipos selecionados
+def generate_combinations(loads, selected_types):
     combinations_list = []
     idx = 1
 
@@ -172,7 +165,7 @@ def generate_combinations(loads):
         for i, _ in perms:
             combination.extend([str(i), str(get_factors(loads[i-1], freq))])
         for i, _ in vars:
-            is_main = (len(vars) == 1 and i == vars[0][0]) or (len(vars) > 1 and i == vars[0][0])
+            is_main = (i == vars[0][0])  # Apenas a primeira carga variável é principal
             factor = get_factors(loads[i-1], freq, is_main)
             if factor > 0:
                 combination.extend([str(i), str(factor)])
@@ -183,70 +176,86 @@ def generate_combinations(loads):
             combinations_list.append([idx, combination_str, type_state, freq_display, criterion, q_value])
         return idx + 1
 
-    # 1. ELU Normal: Cada variável como principal, outras como secundárias (usando ψ₀)
-    for main_var_idx, _ in variable_loads:
-        idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                            "Normal", "ELU", "Resistência", idx)
+    # Combinações apenas com cargas permanentes (se selecionado)
+    if permanent_loads:
+        if "ELU Normal" in selected_types:
+            combination = []
+            for i, _ in permanent_loads:
+                combination.extend([str(i), str(get_factors(loads[i-1], "Normal"))])
+            combination_str = " ".join(combination)
+            if combination_str:
+                q_value = calculate_q(loads, combination_str)
+                combinations_list.append([idx, combination_str, "ELU", "Normal", "Resistência", q_value])
+                idx += 1
 
-    # 2. ELU Frequente: Cada variável como principal, outras com fator 1.4 (vento)
-    for main_var_idx, _ in variable_loads:
-        idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                            "Frequente", "ELU", "Resistência", idx)
+        if "ELS Normal" in selected_types:
+            combination = []
+            for i, _ in permanent_loads:
+                combination.extend([str(i), str(get_factors(loads[i-1], "ELS Normal"))])
+            combination_str = " ".join(combination)
+            if combination_str:
+                q_value = calculate_q(loads, combination_str)
+                combinations_list.append([idx, combination_str, "ELS", "Normal", "Conforto Visual", q_value])
+                idx += 1
 
-    # 3. ELU Rara: Cada variável (vento) como principal
-    for main_var_idx, _ in variable_loads:
-        idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                            "Rara", "ELU", "Resistência", idx)
+    # ELU Normal: Cada variável como principal, outras como secundárias (usando ψ₀)
+    if "ELU Normal" in selected_types:
+        for main_var_idx, _ in variable_loads:
+            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
+                                "Normal", "ELU", "Resistência", idx)
 
-    # 4. ELU Acidental: Cada excepcional como principal
-    for exc_idx, _ in exceptional_loads:
-        combination = []
-        for i, _ in permanent_loads:
-            combination.extend([str(i), str(get_factors(loads[i-1], "Acidental"))])
-        combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental"))])
-        combination_str = " ".join(combination)
-        q_value = calculate_q(loads, combination_str)
-        combinations_list.append([idx, combination_str, "ELU", "Acidental", "Resistência", q_value])
-        idx += 1
+    # ELU Frequente: Cada variável como principal, outras com fator 1.4 (vento)
+    if "ELU Frequente" in selected_types:
+        for main_var_idx, _ in variable_loads:
+            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
+                                "Frequente", "ELU", "Resistência", idx)
 
-    # 5. ELS Quase Permanente: Todas as permanentes + cada variável com ψ₂ (Conforto Visual)
-    for var_idx, _ in variable_loads:
-        idx = add_combination(permanent_loads, [(var_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
+    # ELU Rara: Cada variável (vento) como principal
+    if "ELU Rara" in selected_types:
+        for main_var_idx, _ in variable_loads:
+            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
+                                "Rara", "ELU", "Resistência", idx)
 
-    # 6. ELS Frequente - Danos Reversíveis: Cada variável com ψ₁
-    for var_idx, _ in variable_loads:
-        idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
+    # ELU Acidental: Cada excepcional como principal
+    if "ELU Acidental" in selected_types:
+        for exc_idx, _ in exceptional_loads:
+            combination = []
+            for i, _ in permanent_loads:
+                combination.extend([str(i), str(get_factors(loads[i-1], "Acidental"))])
+            combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental"))])
+            combination_str = " ".join(combination)
+            if combination_str:
+                q_value = calculate_q(loads, combination_str)
+                combinations_list.append([idx, combination_str, "ELU", "Acidental", "Resistência", q_value])
+                idx += 1
 
-    # 7. ELS Frequente - Danos Irreversíveis: Cada variável com 1.0
-    for var_idx, _ in variable_loads:
-        idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
+    # ELS Quase Permanente: Todas as permanentes + cada variável com ψ₂ (Conforto Visual)
+    if "ELS Quase Permanente" in selected_types:
+        for var_idx, _ in variable_loads:
+            idx = add_combination(permanent_loads, [(var_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
 
-    # 8. ELS Rara: Cada variável com 1.0 (Danos Irreversíveis)
-    for var_idx, _ in variable_loads:
-        idx = add_combination([], [(var_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
+    # ELS Frequente - Danos Reversíveis: Cada variável com ψ₁
+    if "ELS Frequente - Danos Reversíveis" in selected_types:
+        for var_idx, _ in variable_loads:
+            idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
 
-    # 9. Combinações apenas com permanentes (para preencher até 40, se necessário)
-    while len(combinations_list) < 40:
-        combination = []
-        for i, _ in permanent_loads:
-            combination.extend([str(i), str(get_factors(loads[i-1], "Normal" if idx % 2 == 0 else "ELS Normal"))])
-        combination_str = " ".join(combination)
-        q_value = calculate_q(loads, combination_str) if combination_str else 0.0
-        combinations_list.append([idx, combination_str, "ELU" if idx % 2 == 0 else "ELS", 
-                                "Normal" if idx % 2 == 0 else "Quase Permanente", 
-                                "Resistência" if idx % 2 == 0 else "Conforto Visual", q_value])
-        idx += 1
+    # ELS Frequente - Danos Irreversíveis: Cada variável com 1.0
+    if "ELS Frequente - Danos Irreversíveis" in selected_types:
+        for var_idx, _ in variable_loads:
+            idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
+
+    # ELS Rara: Cada variável com 1.0 (Danos Irreversíveis)
+    if "ELS Rara" in selected_types:
+        for var_idx, _ in variable_loads:
+            idx = add_combination([], [(var_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
 
     return combinations_list
 
-# Interface Streamlit com novo layout
+# Interface Streamlit com layout ajustado
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-# Adicionar o logo no topo
-
-
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
-st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
+st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800.")
 
 # Entrada de número de carregamentos (mínimo 4)
 num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10):", min_value=4, max_value=10, value=4, step=1)
@@ -276,34 +285,83 @@ for i in range(num_loads):
     loads.append({"name": name, "type": load_type, "value": value, "factors": factors})
     st.markdown('</div>', unsafe_allow_html=True)
 
+# Seleção dos tipos de combinações
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### Selecione os Tipos de Combinações a Gerar 📋")
+st.write("Escolha os tipos de combinações que deseja gerar:")
+
+# Checkboxes para ELU
+st.markdown("#### ELU (Estado Limite Último)")
+elu_normal = st.checkbox("ELU Normal (Resistência)", value=True)
+elu_frequente = st.checkbox("ELU Frequente (Resistência)", value=True)
+elu_rara = st.checkbox("ELU Rara (Resistência)", value=True)
+elu_acidental = st.checkbox("ELU Acidental (Resistência)", value=True)
+
+# Checkboxes para ELS
+st.markdown("#### ELS (Estado Limite de Serviço)")
+els_normal = st.checkbox("ELS Normal (Conforto Visual)", value=True)
+els_quase_permanente = st.checkbox("ELS Quase Permanente (Conforto Visual)", value=True)
+els_frequente_reversivel = st.checkbox("ELS Frequente - Danos Reversíveis", value=True)
+els_frequente_irreversivel = st.checkbox("ELS Frequente - Danos Irreversíveis", value=True)
+els_rara = st.checkbox("ELS Rara (Danos Irreversíveis)", value=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Lista dos tipos selecionados
+selected_types = []
+if elu_normal:
+    selected_types.append("ELU Normal")
+if elu_frequente:
+    selected_types.append("ELU Frequente")
+if elu_rara:
+    selected_types.append("ELU Rara")
+if elu_acidental:
+    selected_types.append("ELU Acidental")
+if els_normal:
+    selected_types.append("ELS Normal")
+if els_quase_permanente:
+    selected_types.append("ELS Quase Permanente")
+if els_frequente_reversivel:
+    selected_types.append("ELS Frequente - Danos Reversíveis")
+if els_frequente_irreversivel:
+    selected_types.append("ELS Frequente - Danos Irreversíveis")
+if els_rara:
+    selected_types.append("ELS Rara")
+
 # Botão para gerar combinações
 if st.button("Gerar Combinações"):
     if loads and any(load["value"] > 0 for load in loads):
-        # Gerar combinações
-        combinations_data = generate_combinations(loads)
-        
-        # Criar DataFrame
-        df = pd.DataFrame(combinations_data, columns=["Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]"])
-        
-        # Exibir tabela na interface
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("### Combinações Geradas 📊")
-        st.dataframe(df)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Exportar para Excel
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Combinações")
-        excel_data = output.getvalue()
-        
-        # Botão para download
-        st.download_button(
-            label="Baixar arquivo .xlsx",
-            data=excel_data,
-            file_name="combinacoes_carga.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        if selected_types:
+            # Gerar combinações com base nos tipos selecionados
+            combinations_data = generate_combinations(loads, selected_types)
+            
+            if combinations_data:
+                # Criar DataFrame
+                df = pd.DataFrame(combinations_data, columns=["Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]"])
+                
+                # Exibir tabela na interface
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown("### Combinações Geradas 📊")
+                st.dataframe(df)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Exportar para Excel
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    df.to_excel(writer, index=False, sheet_name="Combinações")
+                excel_data = output.getvalue()
+                
+                # Botão para download
+                st.download_button(
+                    label="Baixar arquivo .xlsx",
+                    data=excel_data,
+                    file_name="combinacoes_carga.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.error("Nenhuma combinação gerada. Verifique se há cargas suficientes para os tipos selecionados.")
+        else:
+            st.error("Por favor, selecione pelo menos um tipo de combinação para gerar.")
     else:
         st.error("Por favor, insira pelo menos um carregamento com valor maior que 0.")
 
