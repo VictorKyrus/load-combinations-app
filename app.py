@@ -3,29 +3,29 @@ import pandas as pd
 import io
 from itertools import combinations
 
-# CSS personalizado para estilizar a aplicação
+# CSS personalizado para estilizar a aplicação no estilo do site da TQS
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
 
     /* Estilo geral */
     body {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Roboto', sans-serif;
         background-color: #F5F5F5;
         color: #333333;
     }
 
     /* Container principal */
     .main-container {
-        max-width: 800px;
+        max-width: 900px;
         margin: 0 auto;
         padding: 20px;
     }
 
     /* Títulos */
     h1 {
-        color: #FF6200;
-        font-size: 2.5rem;
+        color: #003087; /* Azul escuro */
+        font-size: 2rem;
         font-weight: 700;
         text-align: center;
         margin-bottom: 20px;
@@ -34,7 +34,7 @@ st.markdown("""
     h2 {
         color: #003087;
         font-size: 1.5rem;
-        font-weight: 600;
+        font-weight: 500;
         margin-top: 20px;
         margin-bottom: 10px;
     }
@@ -42,8 +42,9 @@ st.markdown("""
     /* Cards para os campos de entrada */
     .card {
         background-color: #FFFFFF;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         padding: 20px;
         margin-bottom: 20px;
     }
@@ -53,27 +54,68 @@ st.markdown("""
         margin-bottom: 15px;
     }
 
+    .stTextInput input, .stNumberInput input, .stSelectbox select {
+        border: 1px solid #E0E0E0 !important;
+        border-radius: 4px !important;
+        padding: 8px !important;
+        background-color: #FFFFFF !important;
+    }
+
+    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus {
+        border-color: #003087 !important;
+        box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.2) !important;
+    }
+
+    /* Estilo dos checkboxes */
+    .stCheckbox label {
+        font-size: 1rem;
+        color: #333333;
+    }
+
     /* Estilo dos botões */
     .stButton>button {
-        background-color: #FF6200;
-        color: #333333;
-        font-weight: 600;
+        background-color: #1A5C34; /* Verde escuro */
+        color: #FFFFFF;
+        font-weight: 500;
         border: none;
-        border-radius: 5px;
+        border-radius: 4px;
         padding: 10px 20px;
         transition: background-color 0.3s;
     }
 
     .stButton>button:hover {
-        background-color: #E05500;
+        background-color: #2E7D32; /* Verde mais claro no hover */
     }
 
     /* Estilo da tabela */
     .stDataFrame {
         background-color: #FFFFFF;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         padding: 20px;
+    }
+
+    .stDataFrame table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .stDataFrame th {
+        background-color: #F5F5F5;
+        color: #003087;
+        font-weight: 500;
+        padding: 10px;
+        border-bottom: 1px solid #E0E0E0;
+    }
+
+    .stDataFrame td {
+        padding: 10px;
+        border-bottom: 1px solid #E0E0E0;
+    }
+
+    .stDataFrame tr:nth-child(even) {
+        background-color: #FAFAFA;
     }
 
     /* Separadores */
@@ -86,8 +128,8 @@ st.markdown("""
 
     /* Mensagens de erro */
     .stError {
-        color: #FF6200;
-        font-weight: 600;
+        color: #D32F2F;
+        font-weight: 500;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -264,7 +306,7 @@ num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10)
 loads = []
 for i in range(num_loads):
     st.markdown(f'<div class="card">', unsafe_allow_html=True)
-    st.markdown(f"### Carregamento {i+1} 🏗️")
+    st.markdown(f"### Carregamento {i+1}")
     name = st.text_input(f"Nome do carregamento {i+1}", value=f"Carregamento {i+1}", key=f"name_{i}")
     load_type = st.selectbox(f"Tipo do carregamento {i+1}", ["Permanente", "Variável", "Excepcional"], key=f"type_{i}")
     value = st.number_input(f"Valor do carregamento {i+1} (kN/m²)", min_value=0.0, value=0.0, step=0.01, key=f"value_{i}")
@@ -287,7 +329,7 @@ for i in range(num_loads):
 
 # Seleção dos tipos de combinações
 st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### Selecione os Tipos de Combinações a Gerar 📋")
+st.markdown("### Selecione os Tipos de Combinações a Gerar")
 st.write("Escolha os tipos de combinações que deseja gerar:")
 
 # Checkboxes para ELU
@@ -341,7 +383,7 @@ if st.button("Gerar Combinações"):
                 
                 # Exibir tabela na interface
                 st.markdown('<div class="card">', unsafe_allow_html=True)
-                st.markdown("### Combinações Geradas 📊")
+                st.markdown("### Combinações Geradas")
                 st.dataframe(df)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
