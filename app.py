@@ -3,6 +3,95 @@ import pandas as pd
 import io
 from itertools import combinations
 
+# CSS personalizado para estilizar a aplicação
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+    /* Estilo geral */
+    body {
+        font-family: 'Poppins', sans-serif;
+        background-color: #F5F5F5;
+        color: #333333;
+    }
+
+    /* Container principal */
+    .main-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    /* Títulos */
+    h1 {
+        color: #003087;
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    h2 {
+        color: #003087;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-top: 20px;
+        margin-bottom: 10px;
+    }
+
+    /* Cards para os campos de entrada */
+    .card {
+        background-color: #FFFFFF;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* Estilo dos inputs */
+    .stTextInput, .stNumberInput, .stSelectbox {
+        margin-bottom: 15px;
+    }
+
+    /* Estilo dos botões */
+    .stButton>button {
+        background-color: #FF6200;
+        color: #FFFFFF;
+        font-weight: 600;
+        border: none;
+        border-radius: 5px;
+        padding: 10px 20px;
+        transition: background-color 0.3s;
+    }
+
+    .stButton>button:hover {
+        background-color: #E05500;
+    }
+
+    /* Estilo da tabela */
+    .stDataFrame {
+        background-color: #FFFFFF;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+    }
+
+    /* Separadores */
+    hr {
+        border: 0;
+        height: 1px;
+        background: #E0E0E0;
+        margin: 20px 0;
+    }
+
+    /* Mensagens de erro */
+    .stError {
+        color: #FF6200;
+        font-weight: 600;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Dicionário com os fatores de combinação ψ₀, ψ₁, ψ₂ conforme Tabela 2 da ABNT NBR 8800
 ACTION_FACTORS = {
     "Locais sem predominância de pesos/equipamentos fixos ou elevadas concentrações de pessoas": {"ψ₀": 0.5, "ψ₁": 0.4, "ψ₂": 0.3},
@@ -143,7 +232,9 @@ def generate_combinations(loads):
 
     return combinations_list
 
-# Interface Streamlit
+# Interface Streamlit com novo layout
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
+
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
 st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
 
@@ -153,7 +244,8 @@ num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10)
 # Entrada dos carregamentos
 loads = []
 for i in range(num_loads):
-    st.subheader(f"Carregamento {i+1}")
+    st.markdown(f'<div class="card">', unsafe_allow_html=True)
+    st.markdown(f"### Carregamento {i+1} 🏗️")
     name = st.text_input(f"Nome do carregamento {i+1}", value=f"Carregamento {i+1}", key=f"name_{i}")
     load_type = st.selectbox(f"Tipo do carregamento {i+1}", ["Permanente", "Variável", "Excepcional"], key=f"type_{i}")
     value = st.number_input(f"Valor do carregamento {i+1} (kN/m²)", min_value=0.0, value=0.0, step=0.01, key=f"value_{i}")
@@ -172,6 +264,7 @@ for i in range(num_loads):
         factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}  # Para ações excepcionais (ex.: sismos)
 
     loads.append({"name": name, "type": load_type, "value": value, "factors": factors})
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Botão para gerar combinações
 if st.button("Gerar Combinações"):
@@ -183,8 +276,10 @@ if st.button("Gerar Combinações"):
         df = pd.DataFrame(combinations_data, columns=["Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]"])
         
         # Exibir tabela na interface
-        st.write("### Combinações Geradas")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### Combinações Geradas 📊")
         st.dataframe(df)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Exportar para Excel
         output = io.BytesIO()
@@ -201,3 +296,5 @@ if st.button("Gerar Combinações"):
         )
     else:
         st.error("Por favor, insira pelo menos um carregamento com valor maior que 0.")
+
+st.markdown('</div>', unsafe_allow_html=True)
