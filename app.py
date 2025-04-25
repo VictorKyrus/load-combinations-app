@@ -3,15 +3,31 @@ import pandas as pd
 import io
 from itertools import combinations
 
+# Dicionário com os fatores de combinação ψ₀, ψ₁, ψ₂ conforme Tabela 2 da ABNT NBR 8800
+ACTION_FACTORS = {
+    "Locais sem predominância de pesos/equipamentos fixos ou elevadas concentrações de pessoas": {"ψ₀": 0.5, "ψ₁": 0.4, "ψ₂": 0.3},
+    "Locais com predominância de pesos/equipamentos fixos ou elevadas concentrações de pessoas": {"ψ₀": 0.7, "ψ₁": 0.6, "ψ₂": 0.4},
+    "Bibliotecas, arquivos, depósitos, oficinas, garagens e coberturas": {"ψ₀": 0.8, "ψ₁": 0.7, "ψ₂": 0.6},
+    "Pressão dinâmica do vento nas estruturas em geral": {"ψ₀": 0.6, "ψ₁": 0.3, "ψ₂": 0.0},
+    "Variações uniformes de temperatura em relação à média anual local": {"ψ₀": 0.6, "ψ₁": 0.5, "ψ₂": 0.3},
+    "Passarelas de pedestres": {"ψ₀": 0.6, "ψ₁": 0.4, "ψ₂": 0.3},
+    "Vigas de rolamento de pontes rolantes": {"ψ₀": 1.0, "ψ₁": 0.8, "ψ₂": 0.5},
+    "Pilares e subestruturas que suportem vigas de rolamento de pontes rolantes": {"ψ₀": 0.7, "ψ₁": 0.6, "ψ₂": 0.4}
+}
+
 # Função para determinar os fatores de ponderação com base no tipo e frequência
-def get_factors(load_type, frequency, is_main=False, psi_1=0.60, psi_2=0.40):
+def get_factors(load, frequency, is_main=False):
+    load_type = load["type"]
     if load_type == "Permanente":
         if frequency in ["Normal", "Frequente", "Rara", "Acidental"]:
             return 1.25 if "Normal" in frequency else 1.0
         return 1.0
     elif load_type == "Variável":
+        psi_0 = load["factors"]["ψ₀"]
+        psi_1 = load["factors"]["ψ₁"]
+        psi_2 = load["factors"]["ψ₂"]
         if frequency == "Normal":
-            return 1.5 if is_main else 0.84
+            return 1.5 if is_main else psi_0
         elif frequency == "Frequente":
             return 1.05 if is_main else (psi_1 if "ELS" in frequency else 1.4)
         elif frequency == "Rara":
@@ -44,7 +60,7 @@ def calculate_q(loads, combination_str):
     return round(q_total, 3)
 
 # Função para gerar combinações de carga (mínimo 40)
-def generate_combinations(loads, psi_1, psi_2):
+def generate_combinations(loads):
     combinations_list = []
     idx = 1
 
@@ -58,10 +74,10 @@ def generate_combinations(loads, psi_1, psi_2):
         nonlocal combinations_list
         combination = []
         for i, _ in perms:
-            combination.extend([str(i), str(get_factors("Permanente", freq))])
+            combination.extend([str(i), str(get_factors(loads[i-1], freq))])
         for i, _ in vars:
             is_main = (len(vars) == 1 and i == vars[0][0]) or (len(vars) > 1 and i == vars[0][0])
-            factor = get_factors("Variável", freq, is_main, psi_1, psi_2)
+            factor = get_factors(loads[i-1], freq, is_main)
             if factor > 0:
                 combination.extend([str(i), str(factor)])
         combination_str = " ".join(combination)
@@ -71,7 +87,7 @@ def generate_combinations(loads, psi_1, psi_2):
             combinations_list.append([idx, combination_str, type_state, freq_display, criterion, q_value])
         return idx + 1
 
-    # 1. ELU Normal: Cada variável como principal, outras como secundárias
+    # 1. ELU Normal: Cada variável como principal, outras como secundárias (usando ψ₀)
     for main_var_idx, _ in variable_loads:
         idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
                             "Normal", "ELU", "Resistência", idx)
@@ -90,8 +106,8 @@ def generate_combinations(loads, psi_1, psi_2):
     for exc_idx, _ in exceptional_loads:
         combination = []
         for i, _ in permanent_loads:
-            combination.extend([str(i), str(get_factors("Permanente", "Acidental"))])
-        combination.extend([str(exc_idx), str(get_factors("Excepcional", "Acidental"))])
+            combination.extend([str(i), str(get_factors(loads[i-1], "Acidental"))])
+        combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental"))])
         combination_str = " ".join(combination)
         q_value = calculate_q(loads, combination_str)
         combinations_list.append([idx, combination_str, "ELU", "Acidental", "Resistência", q_value])
@@ -117,9 +133,9 @@ def generate_combinations(loads, psi_1, psi_2):
     while len(combinations_list) < 40:
         combination = []
         for i, _ in permanent_loads:
-            combination.extend([str(i), str(get_factors("Permanente", "Normal" if idx % 2 == 0 else "ELS Normal"))])
+            combination.extend([str(i), str(get_factors(loads[i-1], "Normal" if idx % 2 == 0 else "ELS Normal"))])
         combination_str = " ".join(combination)
-        q_value = calculate_q(loads, combination_str) if combination_str else 0.0
+        q_value = calculate_q(load histidine, combination_str) if combination_str else 0.0
         combinations_list.append([idx, combination_str, "ELU" if idx % 2 == 0 else "ELS", 
                                 "Normal" if idx % 2 == 0 else "Quase Permanente", 
                                 "Resistência" if idx % 2 == 0 else "Conforto Visual", q_value])
@@ -129,15 +145,10 @@ def generate_combinations(loads, psi_1, psi_2):
 
 # Interface Streamlit
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
-st.write("Insira até 10 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
+st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
 
-# Entrada de fatores de redução
-st.subheader("Fatores de Redução (ABNT NBR 8800)")
-psi_1 = st.number_input("Fator ψ₁ (Combinação Frequente)", min_value=0.0, max_value=1.0, value=0.60, step=0.01)
-psi_2 = st.number_input("Fator ψ₂ (Combinação Quase Permanente)", min_value=0.0, max_value=1.0, value=0.40, step=0.01)
-
-# Entrada de número de carregamentos
-num_loads = st.number_input("Quantidade de carregamentos (máximo 10):", min_value=1, max_value=10, value=1, step=1)
+# Entrada de número de carregamentos (mínimo 4)
+num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10):", min_value=4, max_value=10, value=4, step=1)
 
 # Entrada dos carregamentos
 loads = []
@@ -146,13 +157,27 @@ for i in range(num_loads):
     name = st.text_input(f"Nome do carregamento {i+1}", value=f"Carregamento {i+1}", key=f"name_{i}")
     load_type = st.selectbox(f"Tipo do carregamento {i+1}", ["Permanente", "Variável", "Excepcional"], key=f"type_{i}")
     value = st.number_input(f"Valor do carregamento {i+1} (kN/m²)", min_value=0.0, value=0.0, step=0.01, key=f"value_{i}")
-    loads.append({"name": name, "type": load_type, "value": value})
+    
+    # Se for uma ação variável, permitir escolher a categoria e associar os fatores ψ
+    factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}  # Valores padrão para Permanente e Excepcional
+    if load_type == "Variável":
+        action_type = st.selectbox(
+            f"Categoria da ação variável {i+1} (Tabela 2 - ABNT NBR 8800)",
+            list(ACTION_FACTORS.keys()),
+            key=f"action_type_{i}"
+        )
+        factors = ACTION_FACTORS[action_type]
+        st.write(f"Fatores para '{action_type}': ψ₀ = {factors['ψ₀']}, ψ₁ = {factors['ψ₁']}, ψ₂ = {factors['ψ₂']}")
+    elif load_type == "Excepcional":
+        factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}  # Para ações excepcionais (ex.: sismos)
+
+    loads.append({"name": name, "type": load_type, "value": value, "factors": factors})
 
 # Botão para gerar combinações
 if st.button("Gerar Combinações"):
     if loads and any(load["value"] > 0 for load in loads):
         # Gerar combinações
-        combinations_data = generate_combinations(loads, psi_1, psi_2)
+        combinations_data = generate_combinations(loads)
         
         # Criar DataFrame
         df = pd.DataFrame(combinations_data, columns=["Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]"])
