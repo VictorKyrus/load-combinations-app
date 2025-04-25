@@ -135,7 +135,7 @@ def generate_combinations(loads):
         for i, _ in permanent_loads:
             combination.extend([str(i), str(get_factors(loads[i-1], "Normal" if idx % 2 == 0 else "ELS Normal"))])
         combination_str = " ".join(combination)
-        q_value = calculate_q(load histidine, combination_str) if combination_str else 0.0
+        q_value = calculate_q(loads, combination_str) if combination_str else 0.0
         combinations_list.append([idx, combination_str, "ELU" if idx % 2 == 0 else "ELS", 
                                 "Normal" if idx % 2 == 0 else "Quase Permanente", 
                                 "Resistência" if idx % 2 == 0 else "Conforto Visual", q_value])
