@@ -22,9 +22,16 @@ st.markdown("""
         padding: 20px;
     }
 
+    /* Logo */
+    .logo {
+        display: block;
+        margin: 0 auto 20px auto;
+        max-width: 300px;
+    }
+
     /* Títulos */
     h1 {
-        color: #003087;
+        color: #FF6200; /* Cor laranja do logo */
         font-size: 2.5rem;
         font-weight: 700;
         text-align: center;
@@ -56,7 +63,7 @@ st.markdown("""
     /* Estilo dos botões */
     .stButton>button {
         background-color: #FF6200;
-        color: #FFFFFF;
+        color: #333333; /* Texto em cinza escuro para melhor contraste */
         font-weight: 600;
         border: none;
         border-radius: 5px;
@@ -234,6 +241,9 @@ def generate_combinations(loads):
 
 # Interface Streamlit com novo layout
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
+
+# Adicionar o logo no topo
+st.markdown('<img src="https://imgur.com/a/BNWw8KX alt="Nascoli Engenharia" class="logo">', unsafe_allow_html=True)
 
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
 st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
