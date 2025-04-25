@@ -146,19 +146,39 @@ ACTION_FACTORS = {
     "Pilares e subestruturas que suportem vigas de rolamento de pontes rolantes": {"ψ₀": 0.7, "ψ₁": 0.6, "ψ₂": 0.4}
 }
 
+# Dicionário com os fatores de ponderação γg para diferentes tipos de estrutura
+GAMMA_G_FACTORS = {
+    "Metálica": {"Normal": 1.25, "Especial": 1.15, "Excepcional": 1.10, "Favorável": 1.0},
+    "Pré-moldada": {"Normal": 1.30, "Especial": 1.20, "Excepcional": 1.15, "Favorável": 1.0},
+    "Moldada": {"Normal": 1.35, "Especial": 1.25, "Excepcional": 1.15, "Favorável": 1.0}
+}
+
 # Função para determinar os fatores de ponderação com base no tipo e frequência
-def get_factors(load, frequency, is_main=False):
+def get_factors(load, frequency, structure_type, is_favorable=False, is_main=False):
     load_type = load["type"]
     if load_type == "Permanente":
-        if frequency in ["Normal", "Frequente", "Rara", "Acidental"]:
-            return 1.25 if "Normal" in frequency else 1.0
+        if is_favorable:
+            return GAMMA_G_FACTORS[structure_type]["Favorável"]
+        if frequency in ["Normal", "Frequente", "Rara"]:
+            return GAMMA_G_FACTORS[structure_type]["Normal"]
+        elif frequency == "Acidental":
+            return GAMMA_G_FACTORS[structure_type]["Excepcional"]
         return 1.0
     elif load_type == "Variável":
         psi_0 = load["factors"]["ψ₀"]
         psi_1 = load["factors"]["ψ₁"]
         psi_2 = load["factors"]["ψ₂"]
+        action_type = load.get("action_type", "").lower()
+        # Ajustar γq com base no tipo de ação variável
+        if "vento" in action_type:
+            gamma_q = 1.4 if frequency == "Normal" else (1.2 if frequency in ["Frequente", "Rara"] else 1.0)
+        elif "temperatura" in action_type:
+            gamma_q = 1.2 if frequency == "Normal" else 1.0
+        else:  # Uso e ocupação
+            gamma_q = 1.5 if frequency == "Normal" else (1.3 if frequency in ["Frequente", "Rara"] else 1.0)
+        
         if frequency == "Normal":
-            return 1.5 if is_main else psi_0
+            return gamma_q if is_main else psi_0
         elif frequency == "Frequente":
             return 1.05 if is_main else (psi_1 if "ELS" in frequency else 1.4)
         elif frequency == "Rara":
@@ -187,11 +207,13 @@ def calculate_q(loads, combination_str):
         load_idx = int(parts[i]) - 1
         factor = float(parts[i + 1])
         load_value = loads[load_idx]["value"]
-        q_total += load_value * factor
+        direction = loads[load_idx]["direction"]
+        sign = 1 if direction == "Positiva" else -1
+        q_total += sign * load_value * factor
     return round(q_total, 3)
 
 # Função para gerar combinações de carga com base nos tipos selecionados
-def generate_combinations(loads, selected_types):
+def generate_combinations(loads, selected_types, structure_type):
     combinations_list = []
     idx = 1
 
@@ -205,10 +227,11 @@ def generate_combinations(loads, selected_types):
         nonlocal combinations_list
         combination = []
         for i, _ in perms:
-            combination.extend([str(i), str(get_factors(loads[i-1], freq))])
+            is_favorable = loads[i-1]["is_favorable"]
+            combination.extend([str(i), str(get_factors(loads[i-1], freq, structure_type, is_favorable))])
         for i, _ in vars:
-            is_main = (i == vars[0][0])  # Apenas a primeira carga variável é principal
-            factor = get_factors(loads[i-1], freq, is_main)
+            is_main = (i == vars[0][0])
+            factor = get_factors(loads[i-1], freq, structure_type, is_main=is_main)
             if factor > 0:
                 combination.extend([str(i), str(factor)])
         combination_str = " ".join(combination)
@@ -218,12 +241,13 @@ def generate_combinations(loads, selected_types):
             combinations_list.append([idx, combination_str, type_state, freq_display, criterion, q_value])
         return idx + 1
 
-    # Combinações apenas com cargas permanentes (se selecionado)
+    # Combinações apenas com cargas permanentes
     if permanent_loads:
         if "ELU Normal" in selected_types:
             combination = []
             for i, _ in permanent_loads:
-                combination.extend([str(i), str(get_factors(loads[i-1], "Normal"))])
+                is_favorable = loads[i-1]["is_favorable"]
+                combination.extend([str(i), str(get_factors(loads[i-1], "Normal", structure_type, is_favorable))])
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
@@ -233,60 +257,62 @@ def generate_combinations(loads, selected_types):
         if "ELS Normal" in selected_types:
             combination = []
             for i, _ in permanent_loads:
-                combination.extend([str(i), str(get_factors(loads[i-1], "ELS Normal"))])
+                is_favorable = loads[i-1]["is_favorable"]
+                combination.extend([str(i), str(get_factors(loads[i-1], "ELS Normal", structure_type, is_favorable))])
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
                 combinations_list.append([idx, combination_str, "ELS", "Normal", "Conforto Visual", q_value])
                 idx += 1
 
-    # ELU Normal: Cada variável como principal, outras como secundárias (usando ψ₀)
+    # ELU Normal
     if "ELU Normal" in selected_types:
         for main_var_idx, _ in variable_loads:
             idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
                                 "Normal", "ELU", "Resistência", idx)
 
-    # ELU Frequente: Cada variável como principal, outras com fator 1.4 (vento)
+    # ELU Frequente
     if "ELU Frequente" in selected_types:
         for main_var_idx, _ in variable_loads:
             idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
                                 "Frequente", "ELU", "Resistência", idx)
 
-    # ELU Rara: Cada variável (vento) como principal
+    # ELU Rara
     if "ELU Rara" in selected_types:
         for main_var_idx, _ in variable_loads:
             idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
                                 "Rara", "ELU", "Resistência", idx)
 
-    # ELU Acidental: Cada excepcional como principal
+    # ELU Acidental
     if "ELU Acidental" in selected_types:
         for exc_idx, _ in exceptional_loads:
             combination = []
             for i, _ in permanent_loads:
-                combination.extend([str(i), str(get_factors(loads[i-1], "Acidental"))])
-            combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental"))])
+                is_favorable = loads[i-1]["is_favorable"]
+                combination.extend([str(i), str(get_factors(loads[i-1], "Acidental", structure_type, is_favorable))])
+            combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental", structure_type))])
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
                 combinations_list.append([idx, combination_str, "ELU", "Acidental", "Resistência", q_value])
                 idx += 1
 
-    # ELS Quase Permanente: Todas as permanentes + cada variável com ψ₂ (Conforto Visual)
+    # ELS Quase Permanente
     if "ELS Quase Permanente" in selected_types:
         for var_idx, _ in variable_loads:
             idx = add_combination(permanent_loads, [(var_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
 
-    # ELS Frequente - Danos Reversíveis: Cada variável com ψ₁
+    # ELS Frequente - Danos Reversíveis
     if "ELS Frequente - Danos Reversíveis" in selected_types:
         for var_idx, _ in variable_loads:
             idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
 
-    # ELS Frequente - Danos Irreversíveis: Cada variável com 1.0
+    # ELS Frequente - Danos Irreversíveis
     if "ELS Frequente - Danos Irreversíveis" in selected_types:
         for var_idx, _ in variable_loads:
             idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
 
-    # ELS Rara: Cada variável com 1.0 (Danos Irreversíveis)
+    # ELS Rara
     if "ELS Rara" in selected_types:
         for var_idx, _ in variable_loads:
             idx = add_combination([], [(var_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
@@ -299,6 +325,12 @@ st.markdown('<div class="main-container">', unsafe_allow_html=True)
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
 st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800.")
 
+# Seleção do tipo de estrutura
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### Tipo de Estrutura")
+structure_type = st.selectbox("Selecione o tipo de estrutura:", ["Metálica", "Pré-moldada", "Moldada"], key="structure_type")
+st.markdown('</div>', unsafe_allow_html=True)
+
 # Entrada de número de carregamentos (mínimo 4)
 num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10):", min_value=4, max_value=10, value=4, step=1)
 
@@ -310,9 +342,12 @@ for i in range(num_loads):
     name = st.text_input(f"Nome do carregamento {i+1}", value=f"Carregamento {i+1}", key=f"name_{i}")
     load_type = st.selectbox(f"Tipo do carregamento {i+1}", ["Permanente", "Variável", "Excepcional"], key=f"type_{i}")
     value = st.number_input(f"Valor do carregamento {i+1} (kN/m²)", min_value=0.0, value=0.0, step=0.01, key=f"value_{i}")
+    direction = st.selectbox(f"Direção do carregamento {i+1}", ["Positiva", "Negativa"], key=f"direction_{i}")
+    is_favorable = st.checkbox(f"Carregamento {i+1} é favorável à segurança?", value=False, key=f"favorable_{i}")
     
     # Se for uma ação variável, permitir escolher a categoria e associar os fatores ψ
-    factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}  # Valores padrão para Permanente e Excepcional
+    factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}
+    action_type = ""
     if load_type == "Variável":
         action_type = st.selectbox(
             f"Categoria da ação variável {i+1} (Tabela 2 - ABNT NBR 8800)",
@@ -322,9 +357,17 @@ for i in range(num_loads):
         factors = ACTION_FACTORS[action_type]
         st.write(f"Fatores para '{action_type}': ψ₀ = {factors['ψ₀']}, ψ₁ = {factors['ψ₁']}, ψ₂ = {factors['ψ₂']}")
     elif load_type == "Excepcional":
-        factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}  # Para ações excepcionais (ex.: sismos)
+        factors = {"ψ₀": 1.0, "ψ₁": 1.0, "ψ₂": 1.0}
 
-    loads.append({"name": name, "type": load_type, "value": value, "factors": factors})
+    loads.append({
+        "name": name, 
+        "type": load_type, 
+        "value": value, 
+        "factors": factors, 
+        "action_type": action_type,
+        "direction": direction,
+        "is_favorable": is_favorable
+    })
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Seleção dos tipos de combinações
@@ -375,7 +418,7 @@ if st.button("Gerar Combinações"):
     if loads and any(load["value"] > 0 for load in loads):
         if selected_types:
             # Gerar combinações com base nos tipos selecionados
-            combinations_data = generate_combinations(loads, selected_types)
+            combinations_data = generate_combinations(loads, selected_types, structure_type)
             
             if combinations_data:
                 # Criar DataFrame
