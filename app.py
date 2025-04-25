@@ -243,7 +243,7 @@ def generate_combinations(loads):
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # Adicionar o logo no topo
-st.markdown('<img src="https://imgur.com/a/BNWw8KX alt="Nascoli Engenharia" class="logo">', unsafe_allow_html=True)
+st.markdown('<img src=https://imgur.com/a/BNWw8KX alt="Nascoli Engenharia" class="logo">', unsafe_allow_html=True)
 
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
 st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800 (mínimo 40 combinações).")
