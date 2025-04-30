@@ -44,20 +44,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Dicionário de categorias de ação (baseado na imagem)
+# Dicionário de categorias de ação (atualizado com traduções)
 ACTION_CATEGORIES = {
     "Peso próprio de estruturas metálicas": {"type": "permanente", "is_wind": False},
     "Peso próprio de estruturas pré-fabricadas": {"type": "permanente", "is_wind": False},
     "Peso próprio de estruturas construídas in situ": {"type": "permanente", "is_wind": False},
     "Elementos de construção industrializados in situ": {"type": "permanente", "is_wind": False},
-    "Elementos de construcción y equipamiento general": {"type": "permanente", "is_wind": False},
-    "Asiento": {"type": "permanente", "is_wind": False},
+    "Elementos de construção e equipamento geral": {"type": "permanente", "is_wind": False},
+    "Assentamento": {"type": "permanente", "is_wind": False},
     "Ações de valores máximos": {"type": "variavel", "is_wind": False},
-    "Temperatura (sin fuego)": {"type": "variavel", "is_wind": False},
+    "Temperatura (sem fogo)": {"type": "variavel", "is_wind": False},
     "Vento": {"type": "variavel", "is_wind": True},
     "Ações variáveis genéricas": {"type": "variavel", "is_wind": False},
     "Excepcional": {"type": "excepcional", "is_wind": False},
-    "Sin": {"type": "permanente", "is_wind": False},
+    "Sem categoria": {"type": "permanente", "is_wind": False},
 }
 
 # Dicionário com os fatores psi (Tabela 2 da NBR 8800)
@@ -91,7 +91,7 @@ def get_factors(load_type, frequency, category, structure_type):
         # Determinar gamma_q com base no tipo de ação variável
         if category == "Vento":
             gamma_q = 1.4
-        elif category == "Temperatura (sin fuego)":
+        elif category == "Temperatura (sem fogo)":
             gamma_q = 1.2
         else:
             gamma_q = 1.5
@@ -292,7 +292,7 @@ if st.session_state.loads:
         st.write(f"ID: {load['id']}, Valor: {load['value']} kN/m², Categoria: {load['category']}, Frequência: {load['frequency']}")
         if st.button(f"Remover Carregamento {load['id']}", key=f"remove_{i}"):
             st.session_state.loads.pop(i)
-            st.experimental_rerun()
+            st.rerun()
 
 # Seleção de tipos de combinações
 st.subheader("Tipos de Combinações")
