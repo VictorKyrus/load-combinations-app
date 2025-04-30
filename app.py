@@ -2,46 +2,135 @@ import streamlit as st
 import pandas as pd
 import io
 
-# Estilização CSS
+# CSS personalizado (adotado do código anterior)
 st.markdown("""
-<style>
-    .stApp {
-        max-width: 1200px;
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+    /* Estilo geral */
+    body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #F5F5F5;
+        color: #333333;
+    }
+
+    /* Container principal */
+    .main-container {
+        max-width: 900px;
         margin: 0 auto;
+        padding: 20px;
     }
-    .stButton>button {
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        padding: 10px 20px;
+
+    /* Títulos */
+    h1 {
+        color: #003087;
+        font-size: 2rem;
+        font-weight: 700;
         text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 16px;
-        margin: 4px 2px;
-        cursor: pointer;
-        border-radius: 4px;
+        margin-bottom: 20px;
     }
-    .stButton>button:hover {
-        background-color: #45a049;
+
+    h2 {
+        color: #003087;
+        font-size: 1.5rem;
+        font-weight: 500;
+        margin-top: 20px;
+        margin-bottom: 10px;
     }
-    .stSelectbox, .stNumberInput {
+
+    /* Cards para os campos de entrada */
+    .card {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    /* Estilo dos inputs */
+    .stTextInput, .stNumberInput, .stSelectbox, .stCheckbox {
         margin-bottom: 15px;
     }
-    .dataframe {
-        font-size: 14px;
-        border-collapse: collapse;
+
+    .stTextInput input, .stNumberInput input, .stSelectbox select {
+        border: 1px solid #E0E0E0 !important;
+        border-radius: 4px !important;
+        padding: 8px !important;
+        background-color: #FFFFFF !important;
+    }
+
+    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus {
+        border-color: #003087 !important;
+        box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.2) !important;
+    }
+
+    /* Estilo dos checkboxes */
+    .stCheckbox label {
+        font-size: 1rem;
+        color: #333333;
+    }
+
+    /* Estilo dos botões */
+    .stButton>button {
+        background-color: #1A5C34;
+        color: #FFFFFF;
+        font-weight: 500;
+        border: none;
+        border-radius: 4px;
+        padding: 10px 20px;
+        transition: background-color 0.3s;
+    }
+
+    .stButton>button:hover {
+        background-color: #2E7D32;
+    }
+
+    /* Estilo da tabela */
+    .stDataFrame {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 20px;
+    }
+
+    .stDataFrame table {
         width: 100%;
+        border-collapse: collapse;
     }
-    .dataframe th, .dataframe td {
-        border: 1px solid #ddd;
-        padding: 8px;
-        text-align: center;
+
+    .stDataFrame th {
+        background-color: #F5F5F5;
+        color: #003087;
+        font-weight: 500;
+        padding: 10px;
+        border-bottom: 1px solid #E0E0E0;
     }
-    .dataframe th {
-        background-color: #f2f2f2;
+
+    .stDataFrame td {
+        padding: 10px;
+        border-bottom: 1px solid #E0E0E0;
     }
-</style>
+
+    .stDataFrame tr:nth-child(even) {
+        background-color: #FAFAFA;
+    }
+
+    /* Separadores */
+    hr {
+        border: 0;
+        height: 1px;
+        background: #E0E0E0;
+        margin: 20px 0;
+    }
+
+    /* Mensagens de erro */
+    .stError {
+        color: #D32F2F;
+        font-weight: 500;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
 # Dicionário de categorias de ação
@@ -88,7 +177,6 @@ def get_factors(load_type, frequency, category, structure_type):
     if load_type == "permanente":
         return gamma_g, 0.0, 0.0, 0.0, 0.0
     elif load_type == "variavel":
-        # Determinar gamma_q com base no tipo de ação variável
         if category == "Vento":
             gamma_q = 1.4
         elif category == "Temperatura (sem fogo)":
@@ -114,16 +202,14 @@ def calculate_q(loads, factors):
         total_q += load["value"] * factor
     return total_q
 
-# Função para gerar combinações de carga (ELU e ELS)
+# Função para gerar combinações de carga (mantida do primeiro código)
 def generate_combinations(loads, structure_type):
     combinations = []
     
-    # Separar cargas por tipo
     permanent_loads = [load for load in loads if ACTION_CATEGORIES[load["category"]]["type"] == "permanente"]
     variable_loads = [load for load in loads if ACTION_CATEGORIES[load["category"]]["type"] == "variavel"]
     exceptional_loads = [load for load in loads if ACTION_CATEGORIES[load["category"]]["type"] == "excepcional"]
     
-    # Separar cargas de vento
     wind_loads = [load for load in variable_loads if ACTION_CATEGORIES[load["category"]]["is_wind"]]
     non_wind_variable_loads = [load for load in variable_loads if not ACTION_CATEGORIES[load["category"]]["is_wind"]]
     
@@ -134,24 +220,20 @@ def generate_combinations(loads, structure_type):
             current_variable_loads.append(wind_load)
         
         if not current_variable_loads:
-            # Apenas cargas permanentes
             factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
             q = calculate_q(permanent_loads, factors)
             description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
             combinations.append({"type": "ELU Normal", "description": description, "q": q})
         else:
-            # Cada carga variável como principal, uma por vez
             for i, main_load in enumerate(current_variable_loads):
                 loads_in_combination = permanent_loads.copy()
                 factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
                 
-                # Carga principal
                 main_category = main_load["category"]
                 main_factor = get_factors("variavel", "principal", main_category, structure_type)[1]
                 loads_in_combination.append(main_load)
                 factors.append(main_factor)
                 
-                # Outras cargas variáveis com psi_0
                 for j, secondary_load in enumerate(current_variable_loads):
                     if j != i:
                         secondary_category = secondary_load["category"]
@@ -172,7 +254,6 @@ def generate_combinations(loads, structure_type):
             current_variable_loads.append(wind_load)
         
         if not current_variable_loads:
-            # Apenas cargas permanentes
             factors = [1.0 for _ in permanent_loads]
             q = calculate_q(permanent_loads, factors)
             description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
@@ -182,7 +263,6 @@ def generate_combinations(loads, structure_type):
                 loads_in_combination = permanent_loads.copy()
                 factors = [1.0 for _ in permanent_loads]
                 
-                # Carga principal com psi_1
                 main_category = main_load["category"]
                 frequency = main_load["frequency"]
                 _, _, _, psi_1, _ = get_factors("variavel", frequency, main_category, structure_type)
@@ -190,7 +270,6 @@ def generate_combinations(loads, structure_type):
                 loads_in_combination.append(main_load)
                 factors.append(main_factor)
                 
-                # Outras cargas variáveis com psi_2
                 for j, secondary_load in enumerate(current_variable_loads):
                     if j != i:
                         secondary_category = secondary_load["category"]
@@ -211,7 +290,6 @@ def generate_combinations(loads, structure_type):
             current_variable_loads.append(wind_load)
         
         if not current_variable_loads:
-            # Apenas cargas permanentes
             factors = [1.0 for _ in permanent_loads]
             q = calculate_q(permanent_loads, factors)
             description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
@@ -220,7 +298,6 @@ def generate_combinations(loads, structure_type):
             loads_in_combination = permanent_loads.copy()
             factors = [1.0 for _ in permanent_loads]
             
-            # Todas as cargas variáveis com psi_2
             for load in current_variable_loads:
                 category = load["category"]
                 frequency = load["frequency"]
@@ -234,78 +311,91 @@ def generate_combinations(loads, structure_type):
     
     return combinations
 
-# Interface Streamlit
-st.title("Gerador de Combinações de Carga")
+# Interface Streamlit (adotada do segundo código, com ajustes)
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
+
+st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
+st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800.")
 
 # Seleção do tipo de estrutura
-structure_type = st.selectbox(
-    "Selecione o tipo de estrutura:",
-    options=["Metálica", "Pré-moldada", "Moldada in loco"],
-    index=0
-)
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.markdown("### Tipo de Estrutura")
+structure_type = st.selectbox("Selecione o tipo de estrutura:", ["Metálica", "Pré-moldada", "Moldada in loco"], key="structure_type")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Entrada de carregamentos
-st.subheader("Entrada de Carregamentos")
-if "loads" not in st.session_state:
-    st.session_state.loads = []
+# Entrada de número de carregamentos (mínimo 4)
+num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10):", min_value=4, max_value=10, value=4, step=1)
 
-# Formulário para adicionar carregamento
-with st.form(key="load_form"):
-    load_id = st.text_input("ID do Carregamento (ex.: CC1, CC2)", value=f"CC{len(st.session_state.loads) + 1}")
-    load_value = st.number_input("Valor do Carregamento (kN/m²)", min_value=0.0, value=0.0, step=0.1)
-    category = st.selectbox("Categoria da Ação", options=list(ACTION_CATEGORIES.keys()))
-    frequency = st.selectbox(
-        "Frequência (para cargas variáveis)",
-        options=["N/A"] + list(ACTION_FACTORS.keys()),
-        index=0
-    )
-    submit_button = st.form_submit_button(label="Adicionar Carregamento")
+# Entrada dos carregamentos
+loads = []
+for i in range(num_loads):
+    st.markdown(f'<div class="card">', unsafe_allow_html=True)
+    st.markdown(f"### Carregamento {i+1}")
+    name = st.text_input(f"Nome do carregamento {i+1}", value=f"CC{i+1}", key=f"name_{i}")
+    load_type = st.selectbox(f"Tipo do carregamento {i+1}", ["Permanente", "Variável", "Excepcional"], key=f"type_{i}")
+    value = st.number_input(f"Valor do carregamento {i+1} (kN/m²)", min_value=0.0, value=0.0, step=0.01, key=f"value_{i}")
+    direction = st.selectbox(f"Direção do carregamento {i+1}", ["Positiva", "Negativa"], key=f"direction_{i}")
+    is_favorable = st.checkbox(f"Carregamento {i+1} é favorável à segurança?", value=False, key=f"favorable_{i}")
+    
+    category = st.selectbox(f"Categoria da ação {i+1}", options=list(ACTION_CATEGORIES.keys()), key=f"category_{i}")
+    frequency = "N/A"
+    if load_type == "Variável":
+        frequency = st.selectbox(
+            f"Frequência (para cargas variáveis) {i+1}",
+            options=["N/A"] + list(ACTION_FACTORS.keys()),
+            key=f"frequency_{i}"
+        )
+    
+    loads.append({
+        "id": name,
+        "value": value if direction == "Positiva" else -value,
+        "category": category,
+        "frequency": frequency if load_type == "Variável" else "N/A",
+        "type": load_type,
+        "is_favorable": is_favorable
+    })
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    if submit_button:
-        load_type = ACTION_CATEGORIES[category]["type"]
-        st.session_state.loads.append({
-            "id": load_id,
-            "value": load_value,
-            "category": category,
-            "frequency": frequency if load_type == "variavel" else "N/A"
-        })
-
-# Exibir carregamentos adicionados
-if st.session_state.loads:
-    st.subheader("Carregamentos Adicionados")
-    for i, load in enumerate(st.session_state.loads):
-        st.write(f"ID: {load['id']}, Valor: {load['value']} kN/m², Categoria: {load['category']}, Frequência: {load['frequency']}")
-        if st.button(f"Remover Carregamento {load['id']}", key=f"remove_{i}"):
-            st.session_state.loads.pop(i)
-            st.rerun()
-
-# Gerar combinações
+# Botão para gerar combinações
 if st.button("Gerar Combinações"):
-    if not st.session_state.loads:
-        st.error("Adicione pelo menos um carregamento antes de gerar combinações.")
-    else:
-        combinations = generate_combinations(st.session_state.loads, structure_type)
+    if len(loads) >= 4 and any(abs(load["value"]) > 0 for load in loads):
+        combinations = generate_combinations(loads, structure_type)
         all_combinations = []
+        idx = 1
         for comb in combinations:
             all_combinations.append({
-                "Tipo": comb["type"],
-                "Descrição": comb["description"],
-                "Q (kN/m²)": round(comb["q"], 2)
+                "Nº": idx,
+                "Combinação de Carga": comb["description"],
+                "Tipo": comb["type"].split()[0],
+                "Frequência": comb["type"].replace("ELU ", "").replace("ELS ", ""),
+                "Critério": "Resistência" if "ELU" in comb["type"] else "Conforto Visual",
+                "Q [kN/m²]": round(comb["q"], 3)
             })
+            idx += 1
         
         # Criar DataFrame
         df = pd.DataFrame(all_combinations)
-        st.subheader("Tabela de Combinações")
-        st.dataframe(df)
         
-        # Exportar para Excel
+        # Exibir tabela na interface
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### Combinações Geradas")
+        st.dataframe(df)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Exportar para Excel (corrigido para usar openpyxl)
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Combinações")
         excel_data = output.getvalue()
+        
+        # Botão para download
         st.download_button(
-            label="Exportar para Excel",
+            label="Baixar arquivo .xlsx",
             data=excel_data,
             file_name="combinacoes_carga.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+    else:
+        st.error("Por favor, insira pelo menos 4 carregamentos, com pelo menos um valor maior que 0.")
+
+st.markdown('</div>', unsafe_allow_html=True)
