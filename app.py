@@ -222,100 +222,185 @@ def generate_combinations(loads, selected_types, structure_type):
     variable_loads = [(i+1, load["name"]) for i, load in enumerate(loads) if load["type"] == "Variável"]
     exceptional_loads = [(i+1, load["name"]) for i, load in enumerate(loads) if load["type"] == "Excepcional"]
 
+    # Separar cargas de vento
+    wind_loads = [(i+1, load["name"]) for i, load in enumerate(loads) if load["type"] == "Variável" and "vento" in load["action_type"].lower()]
+    non_wind_variable_loads = [(i+1, load["name"]) for i, load in enumerate(loads) if load["type"] == "Variável" and "vento" not in load["action_type"].lower()]
+
     # Função auxiliar para adicionar combinações
     def add_combination(perms, vars, freq, type_state, criterion, idx):
         nonlocal combinations_list
         combination = []
+        load_indices = []
+
+        # Adicionar cargas permanentes
         for i, _ in perms:
             is_favorable = loads[i-1]["is_favorable"]
-            combination.extend([str(i), str(get_factors(loads[i-1], freq, structure_type, is_favorable))])
+            factor = get_factors(loads[i-1], freq, structure_type, is_favorable)
+            combination.extend([str(i), str(factor)])
+            load_indices.append(i-1)
+
+        # Adicionar cargas variáveis
         for i, _ in vars:
             is_main = (i == vars[0][0])
             factor = get_factors(loads[i-1], freq, structure_type, is_main=is_main)
             if factor > 0:
                 combination.extend([str(i), str(factor)])
+                load_indices.append(i-1)
+
         combination_str = " ".join(combination)
         if combination_str:
             q_value = calculate_q(loads, combination_str)
             freq_display = freq.replace("ELS ", "").split(" - ")[0]
-            combinations_list.append([idx, combination_str, type_state, freq_display, criterion, q_value])
+
+            # Obter categorias e frequências das cargas envolvidas
+            categories = [loads[idx]["type"] if loads[idx]["type"] != "Variável" else loads[idx]["action_type"] for idx in load_indices]
+            frequencies = [loads[idx]["action_type"] if loads[idx]["type"] == "Variável" else "N/A" for idx in load_indices]
+
+            combinations_list.append([
+                idx, combination_str, type_state, freq_display, criterion, q_value,
+                ", ".join(categories), ", ".join(frequencies)
+            ])
         return idx + 1
 
     # Combinações apenas com cargas permanentes
     if permanent_loads:
         if "ELU Normal" in selected_types:
             combination = []
+            load_indices = []
             for i, _ in permanent_loads:
                 is_favorable = loads[i-1]["is_favorable"]
-                combination.extend([str(i), str(get_factors(loads[i-1], "Normal", structure_type, is_favorable))])
+                factor = get_factors(loads[i-1], "Normal", structure_type, is_favorable)
+                combination.extend([str(i), str(factor)])
+                load_indices.append(i-1)
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
-                combinations_list.append([idx, combination_str, "ELU", "Normal", "Resistência", q_value])
+                categories = [loads[idx]["type"] for idx in load_indices]
+                frequencies = ["N/A" for _ in load_indices]
+                combinations_list.append([
+                    idx, combination_str, "ELU", "Normal", "Resistência", q_value,
+                    ", ".join(categories), ", ".join(frequencies)
+                ])
                 idx += 1
 
         if "ELS Normal" in selected_types:
             combination = []
+            load_indices = []
             for i, _ in permanent_loads:
                 is_favorable = loads[i-1]["is_favorable"]
-                combination.extend([str(i), str(get_factors(loads[i-1], "ELS Normal", structure_type, is_favorable))])
+                factor = get_factors(loads[i-1], "ELS Normal", structure_type, is_favorable)
+                combination.extend([str(i), str(factor)])
+                load_indices.append(i-1)
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
-                combinations_list.append([idx, combination_str, "ELS", "Normal", "Conforto Visual", q_value])
+                categories = [loads[idx]["type"] for idx in load_indices]
+                frequencies = ["N/A" for _ in load_indices]
+                combinations_list.append([
+                    idx, combination_str, "ELS", "Normal", "Conforto Visual", q_value,
+                    ", ".join(categories), ", ".join(frequencies)
+                ])
                 idx += 1
 
     # ELU Normal
     if "ELU Normal" in selected_types:
-        for main_var_idx, _ in variable_loads:
-            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                                "Normal", "ELU", "Resistência", idx)
+        # Primeiro, combinações sem cargas de vento
+        if non_wind_variable_loads:
+            for main_var_idx, _ in non_wind_variable_loads:
+                vars_to_combine = [(main_var_idx, "")] + [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                idx = add_combination(permanent_loads, vars_to_combine, "Normal", "ELU", "Resistência", idx)
+        # Depois, combinações com uma carga de vento por vez
+        for wind_idx, _ in wind_loads:
+            for main_var_idx, _ in non_wind_variable_loads + [(wind_idx, "")]:
+                vars_to_combine = [(main_var_idx, "")]
+                # Adicionar outras cargas variáveis não-vento
+                vars_to_combine += [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                # Se a carga principal não for vento, adicionar a carga de vento atual
+                if main_var_idx != wind_idx:
+                    vars_to_combine.append((wind_idx, ""))
+                idx = add_combination(permanent_loads, vars_to_combine, "Normal", "ELU", "Resistência", idx)
 
     # ELU Frequente
     if "ELU Frequente" in selected_types:
-        for main_var_idx, _ in variable_loads:
-            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                                "Frequente", "ELU", "Resistência", idx)
+        if non_wind_variable_loads:
+            for main_var_idx, _ in non_wind_variable_loads:
+                vars_to_combine = [(main_var_idx, "")] + [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                idx = add_combination(permanent_loads, vars_to_combine, "Frequente", "ELU", "Resistência", idx)
+        for wind_idx, _ in wind_loads:
+            for main_var_idx, _ in non_wind_variable_loads + [(wind_idx, "")]:
+                vars_to_combine = [(main_var_idx, "")]
+                vars_to_combine += [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                if main_var_idx != wind_idx:
+                    vars_to_combine.append((wind_idx, ""))
+                idx = add_combination(permanent_loads, vars_to_combine, "Frequente", "ELU", "Resistência", idx)
 
     # ELU Rara
     if "ELU Rara" in selected_types:
-        for main_var_idx, _ in variable_loads:
-            idx = add_combination(permanent_loads, [(main_var_idx, "")] + [(i, "") for i, _ in variable_loads if i != main_var_idx], 
-                                "Rara", "ELU", "Resistência", idx)
+        if non_wind_variable_loads:
+            for main_var_idx, _ in non_wind_variable_loads:
+                vars_to_combine = [(main_var_idx, "")] + [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                idx = add_combination(permanent_loads, vars_to_combine, "Rara", "ELU", "Resistência", idx)
+        for wind_idx, _ in wind_loads:
+            for main_var_idx, _ in non_wind_variable_loads + [(wind_idx, "")]:
+                vars_to_combine = [(main_var_idx, "")]
+                vars_to_combine += [(i, "") for i, _ in non_wind_variable_loads if i != main_var_idx]
+                if main_var_idx != wind_idx:
+                    vars_to_combine.append((wind_idx, ""))
+                idx = add_combination(permanent_loads, vars_to_combine, "Rara", "ELU", "Resistência", idx)
 
     # ELU Acidental
     if "ELU Acidental" in selected_types:
         for exc_idx, _ in exceptional_loads:
             combination = []
+            load_indices = []
             for i, _ in permanent_loads:
                 is_favorable = loads[i-1]["is_favorable"]
                 combination.extend([str(i), str(get_factors(loads[i-1], "Acidental", structure_type, is_favorable))])
+                load_indices.append(i-1)
             combination.extend([str(exc_idx), str(get_factors(loads[exc_idx-1], "Acidental", structure_type))])
+            load_indices.append(exc_idx-1)
             combination_str = " ".join(combination)
             if combination_str:
                 q_value = calculate_q(loads, combination_str)
-                combinations_list.append([idx, combination_str, "ELU", "Acidental", "Resistência", q_value])
+                categories = [loads[idx]["type"] for idx in load_indices]
+                frequencies = ["N/A" for _ in load_indices]
+                combinations_list.append([
+                    idx, combination_str, "ELU", "Acidental", "Resistência", q_value,
+                    ", ".join(categories), ", ".join(frequencies)
+                ])
                 idx += 1
 
     # ELS Quase Permanente
     if "ELS Quase Permanente" in selected_types:
-        for var_idx, _ in variable_loads:
-            idx = add_combination(permanent_loads, [(var_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
+        if non_wind_variable_loads:
+            for var_idx, _ in non_wind_variable_loads:
+                idx = add_combination(permanent_loads, [(var_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
+        for wind_idx, _ in wind_loads:
+            idx = add_combination(permanent_loads, [(wind_idx, "")], "ELS Quase Permanente", "ELS", "Conforto Visual", idx)
 
     # ELS Frequente - Danos Reversíveis
     if "ELS Frequente - Danos Reversíveis" in selected_types:
-        for var_idx, _ in variable_loads:
-            idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
+        if non_wind_variable_loads:
+            for var_idx, _ in non_wind_variable_loads:
+                idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
+        for wind_idx, _ in wind_loads:
+            idx = add_combination([], [(wind_idx, "")], "ELS Frequente - Danos Reversíveis", "ELS", "Danos Reversíveis", idx)
 
     # ELS Frequente - Danos Irreversíveis
     if "ELS Frequente - Danos Irreversíveis" in selected_types:
-        for var_idx, _ in variable_loads:
-            idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
+        if non_wind_variable_loads:
+            for var_idx, _ in non_wind_variable_loads:
+                idx = add_combination([], [(var_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
+        for wind_idx, _ in wind_loads:
+            idx = add_combination([], [(wind_idx, "")], "ELS Frequente - Danos Irreversíveis", "ELS", "Danos Irreversíveis", idx)
 
     # ELS Rara
     if "ELS Rara" in selected_types:
-        for var_idx, _ in variable_loads:
-            idx = add_combination([], [(var_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
+        if non_wind_variable_loads:
+            for var_idx, _ in non_wind_variable_loads:
+                idx = add_combination([], [(var_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
+        for wind_idx, _ in wind_loads:
+            idx = add_combination([], [(wind_idx, "")], "ELS Rara", "ELS", "Danos Irreversíveis", idx)
 
     return combinations_list
 
@@ -421,8 +506,11 @@ if st.button("Gerar Combinações"):
             combinations_data = generate_combinations(loads, selected_types, structure_type)
             
             if combinations_data:
-                # Criar DataFrame
-                df = pd.DataFrame(combinations_data, columns=["Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]"])
+                # Criar DataFrame com as novas colunas
+                df = pd.DataFrame(combinations_data, columns=[
+                    "Nº", "Combinação de Carga", "Tipo", "Frequência", "Critério", "Q [kN/m²]",
+                    "Categorias Envolvidas", "Frequências Envolvidas"
+                ])
                 
                 # Exibir tabela na interface
                 st.markdown('<div class="card">', unsafe_allow_html=True)
