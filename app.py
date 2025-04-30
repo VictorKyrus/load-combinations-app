@@ -44,7 +44,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Dicionário de categorias de ação (atualizado com traduções)
+# Dicionário de categorias de ação
 ACTION_CATEGORIES = {
     "Peso próprio de estruturas metálicas": {"type": "permanente", "is_wind": False},
     "Peso próprio de estruturas pré-fabricadas": {"type": "permanente", "is_wind": False},
@@ -86,7 +86,7 @@ def get_factors(load_type, frequency, category, structure_type):
     gamma_g = GAMMA_G_FACTORS[structure_type]
     
     if load_type == "permanente":
-        return gamma_g, 0.0, 0.0
+        return gamma_g, 0.0, 0.0, 0.0, 0.0
     elif load_type == "variavel":
         # Determinar gamma_q com base no tipo de ação variável
         if category == "Vento":
@@ -100,10 +100,12 @@ def get_factors(load_type, frequency, category, structure_type):
             psi_0 = 1.0
         else:
             psi_0 = ACTION_FACTORS.get(frequency, {"psi_0": 0.0})["psi_0"]
-        return gamma_g, gamma_q, psi_0
+        psi_1 = ACTION_FACTORS.get(frequency, {"psi_1": 0.0})["psi_1"]
+        psi_2 = ACTION_FACTORS.get(frequency, {"psi_2": 0.0})["psi_2"]
+        return gamma_g, gamma_q, psi_0, psi_1, psi_2
     elif load_type == "excepcional":
-        return gamma_g, 1.2, 0.0
-    return gamma_g, 0.0, 0.0
+        return gamma_g, 1.2, 0.0, 0.0, 0.0
+    return gamma_g, 0.0, 0.0, 0.0, 0.0
 
 # Função para calcular o carregamento total Q
 def calculate_q(loads, factors):
@@ -112,8 +114,8 @@ def calculate_q(loads, factors):
         total_q += load["value"] * factor
     return total_q
 
-# Função para gerar combinações de carga
-def generate_combinations(loads, combination_type, structure_type):
+# Função para gerar combinações de carga (ELU e ELS)
+def generate_combinations(loads, structure_type):
     combinations = []
     
     # Separar cargas por tipo
@@ -125,127 +127,110 @@ def generate_combinations(loads, combination_type, structure_type):
     wind_loads = [load for load in variable_loads if ACTION_CATEGORIES[load["category"]]["is_wind"]]
     non_wind_variable_loads = [load for load in variable_loads if not ACTION_CATEGORIES[load["category"]]["is_wind"]]
     
-    if combination_type == "ELU Normal":
-        # Combinações ELU Normal
-        # Para cada carga de vento (ou nenhuma), criar combinações com as outras cargas variáveis
-        for wind_load in [None] + wind_loads:
-            current_variable_loads = non_wind_variable_loads.copy()
-            if wind_load:
-                current_variable_loads.append(wind_load)
-            
-            if not current_variable_loads:
-                # Apenas cargas permanentes
+    # 1. Combinações ELU Normal
+    for wind_load in [None] + wind_loads:
+        current_variable_loads = non_wind_variable_loads.copy()
+        if wind_load:
+            current_variable_loads.append(wind_load)
+        
+        if not current_variable_loads:
+            # Apenas cargas permanentes
+            factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
+            q = calculate_q(permanent_loads, factors)
+            description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
+            combinations.append({"type": "ELU Normal", "description": description, "q": q})
+        else:
+            # Cada carga variável como principal, uma por vez
+            for i, main_load in enumerate(current_variable_loads):
+                loads_in_combination = permanent_loads.copy()
                 factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
-                q = calculate_q(permanent_loads, factors)
-                description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(permanent_loads, factors)])
-                combinations.append({"description": description, "q": q})
-            else:
-                # Cada carga variável como principal, uma por vez
-                for i, main_load in enumerate(current_variable_loads):
-                    loads_in_combination = permanent_loads.copy()
-                    factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
-                    
-                    # Carga principal
-                    main_category = main_load["category"]
-                    main_factor = get_factors("variavel", "principal", main_category, structure_type)[1]
-                    loads_in_combination.append(main_load)
-                    factors.append(main_factor)
-                    
-                    # Outras cargas variáveis com psi_0
-                    for j, secondary_load in enumerate(current_variable_loads):
-                        if j != i:
-                            secondary_category = secondary_load["category"]
-                            frequency = secondary_load["frequency"]
-                            gamma_g, gamma_q, psi_0 = get_factors("variavel", frequency, secondary_category, structure_type)
-                            factor = gamma_q * psi_0
-                            loads_in_combination.append(secondary_load)
-                            factors.append(factor)
-                    
-                    q = calculate_q(loads_in_combination, factors)
-                    description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(loads_in_combination, factors)])
-                    combinations.append({"description": description, "q": q})
+                
+                # Carga principal
+                main_category = main_load["category"]
+                main_factor = get_factors("variavel", "principal", main_category, structure_type)[1]
+                loads_in_combination.append(main_load)
+                factors.append(main_factor)
+                
+                # Outras cargas variáveis com psi_0
+                for j, secondary_load in enumerate(current_variable_loads):
+                    if j != i:
+                        secondary_category = secondary_load["category"]
+                        frequency = secondary_load["frequency"]
+                        gamma_g, gamma_q, psi_0, _, _ = get_factors("variavel", frequency, secondary_category, structure_type)
+                        factor = gamma_q * psi_0
+                        loads_in_combination.append(secondary_load)
+                        factors.append(factor)
+                
+                q = calculate_q(loads_in_combination, factors)
+                description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(loads_in_combination, factors)])
+                combinations.append({"type": "ELU Normal", "description": description, "q": q})
     
-    elif combination_type == "ELU Frequente":
-        # Combinações ELU Frequente (usando psi_1)
-        for wind_load in [None] + wind_loads:
-            current_variable_loads = non_wind_variable_loads.copy()
-            if wind_load:
-                current_variable_loads.append(wind_load)
-            
-            if not current_variable_loads:
-                # Apenas cargas permanentes
-                factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
-                q = calculate_q(permanent_loads, factors)
-                description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(permanent_loads, factors)])
-                combinations.append({"description": description, "q": q})
-            else:
-                for i, main_load in enumerate(current_variable_loads):
-                    loads_in_combination = permanent_loads.copy()
-                    factors = [get_factors("permanente", None, None, structure_type)[0] for _ in permanent_loads]
-                    
-                    # Carga principal com psi_1
-                    main_category = main_load["category"]
-                    frequency = main_load["frequency"]
-                    gamma_g, gamma_q, psi_0 = get_factors("variavel", frequency, main_category, structure_type)
-                    psi_1 = ACTION_FACTORS.get(frequency, {"psi_1": 0.0})["psi_1"]
-                    main_factor = gamma_q * psi_1
-                    loads_in_combination.append(main_load)
-                    factors.append(main_factor)
-                    
-                    # Outras cargas variáveis com psi_2
-                    for j, secondary_load in enumerate(current_variable_loads):
-                        if j != i:
-                            secondary_category = secondary_load["category"]
-                            frequency = secondary_load["frequency"]
-                            gamma_g, gamma_q, psi_0 = get_factors("variavel", frequency, secondary_category, structure_type)
-                            psi_2 = ACTION_FACTORS.get(frequency, {"psi_2": 0.0})["psi_2"]
-                            factor = gamma_q * psi_2
-                            loads_in_combination.append(secondary_load)
-                            factors.append(factor)
-                    
-                    q = calculate_q(loads_in_combination, factors)
-                    description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(loads_in_combination, factors)])
-                    combinations.append({"description": description, "q": q})
-    
-    elif combination_type == "ELS":
-        # Combinações ELS (usando psi_2 e gamma = 1.0)
-        for wind_load in [None] + wind_loads:
-            current_variable_loads = non_wind_variable_loads.copy()
-            if wind_load:
-                current_variable_loads.append(wind_load)
-            
-            if not current_variable_loads:
-                # Apenas cargas permanentes
+    # 2. Combinações ELS Frequente
+    for wind_load in [None] + wind_loads:
+        current_variable_loads = non_wind_variable_loads.copy()
+        if wind_load:
+            current_variable_loads.append(wind_load)
+        
+        if not current_variable_loads:
+            # Apenas cargas permanentes
+            factors = [1.0 for _ in permanent_loads]
+            q = calculate_q(permanent_loads, factors)
+            description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
+            combinations.append({"type": "ELS Frequente", "description": description, "q": q})
+        else:
+            for i, main_load in enumerate(current_variable_loads):
+                loads_in_combination = permanent_loads.copy()
                 factors = [1.0 for _ in permanent_loads]
-                q = calculate_q(permanent_loads, factors)
-                description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(permanent_loads, factors)])
-                combinations.append({"description": description, "q": q})
-            else:
-                for i, main_load in enumerate(current_variable_loads):
-                    loads_in_combination = permanent_loads.copy()
-                    factors = [1.0 for _ in permanent_loads]
-                    
-                    # Carga principal com psi_2
-                    main_category = main_load["category"]
-                    frequency = main_load["frequency"]
-                    psi_2 = ACTION_FACTORS.get(frequency, {"psi_2": 0.0})["psi_2"]
-                    main_factor = psi_2
-                    loads_in_combination.append(main_load)
-                    factors.append(main_factor)
-                    
-                    # Outras cargas variáveis com psi_2
-                    for j, secondary_load in enumerate(current_variable_loads):
-                        if j != i:
-                            secondary_category = secondary_load["category"]
-                            frequency = secondary_load["frequency"]
-                            psi_2 = ACTION_FACTORS.get(frequency, {"psi_2": 0.0})["psi_2"]
-                            factor = psi_2
-                            loads_in_combination.append(secondary_load)
-                            factors.append(factor)
-                    
-                    q = calculate_q(loads_in_combination, factors)
-                    description = " ".join([f"{load['id']} {factor:.2f}" for load, factor in zip(loads_in_combination, factors)])
-                    combinations.append({"description": description, "q": q})
+                
+                # Carga principal com psi_1
+                main_category = main_load["category"]
+                frequency = main_load["frequency"]
+                _, _, _, psi_1, _ = get_factors("variavel", frequency, main_category, structure_type)
+                main_factor = psi_1
+                loads_in_combination.append(main_load)
+                factors.append(main_factor)
+                
+                # Outras cargas variáveis com psi_2
+                for j, secondary_load in enumerate(current_variable_loads):
+                    if j != i:
+                        secondary_category = secondary_load["category"]
+                        frequency = secondary_load["frequency"]
+                        _, _, _, _, psi_2 = get_factors("variavel", frequency, secondary_category, structure_type)
+                        factor = psi_2
+                        loads_in_combination.append(secondary_load)
+                        factors.append(factor)
+                
+                q = calculate_q(loads_in_combination, factors)
+                description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(loads_in_combination, factors)])
+                combinations.append({"type": "ELS Frequente", "description": description, "q": q})
+    
+    # 3. Combinações ELS Quasipermanente
+    for wind_load in [None] + wind_loads:
+        current_variable_loads = non_wind_variable_loads.copy()
+        if wind_load:
+            current_variable_loads.append(wind_load)
+        
+        if not current_variable_loads:
+            # Apenas cargas permanentes
+            factors = [1.0 for _ in permanent_loads]
+            q = calculate_q(permanent_loads, factors)
+            description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(permanent_loads, factors)])
+            combinations.append({"type": "ELS Quasipermanente", "description": description, "q": q})
+        else:
+            loads_in_combination = permanent_loads.copy()
+            factors = [1.0 for _ in permanent_loads]
+            
+            # Todas as cargas variáveis com psi_2
+            for load in current_variable_loads:
+                category = load["category"]
+                frequency = load["frequency"]
+                _, _, _, _, psi_2 = get_factors("variavel", frequency, category, structure_type)
+                loads_in_combination.append(load)
+                factors.append(psi_2)
+            
+            q = calculate_q(loads_in_combination, factors)
+            description = " + ".join([f"{factor:.2f}*{load['id']}" for load, factor in zip(loads_in_combination, factors)])
+            combinations.append({"type": "ELS Quasipermanente", "description": description, "q": q})
     
     return combinations
 
@@ -266,7 +251,7 @@ if "loads" not in st.session_state:
 
 # Formulário para adicionar carregamento
 with st.form(key="load_form"):
-    load_id = st.text_input("ID do Carregamento (ex.: 1, 2, 3)", value=str(len(st.session_state.loads) + 1))
+    load_id = st.text_input("ID do Carregamento (ex.: CC1, CC2)", value=f"CC{len(st.session_state.loads) + 1}")
     load_value = st.number_input("Valor do Carregamento (kN/m²)", min_value=0.0, value=0.0, step=0.1)
     category = st.selectbox("Categoria da Ação", options=list(ACTION_CATEGORIES.keys()))
     frequency = st.selectbox(
@@ -294,28 +279,19 @@ if st.session_state.loads:
             st.session_state.loads.pop(i)
             st.rerun()
 
-# Seleção de tipos de combinações
-st.subheader("Tipos de Combinações")
-combination_types = st.multiselect(
-    "Selecione os tipos de combinações:",
-    options=["ELU Normal", "ELU Frequente", "ELS"],
-    default=["ELU Normal"]
-)
-
 # Gerar combinações
 if st.button("Gerar Combinações"):
     if not st.session_state.loads:
         st.error("Adicione pelo menos um carregamento antes de gerar combinações.")
     else:
+        combinations = generate_combinations(st.session_state.loads, structure_type)
         all_combinations = []
-        for comb_type in combination_types:
-            combinations = generate_combinations(st.session_state.loads, comb_type, structure_type)
-            for comb in combinations:
-                all_combinations.append({
-                    "Tipo": comb_type,
-                    "Descrição": comb["description"],
-                    "Q (kN/m²)": round(comb["q"], 2)
-                })
+        for comb in combinations:
+            all_combinations.append({
+                "Tipo": comb["type"],
+                "Descrição": comb["description"],
+                "Q (kN/m²)": round(comb["q"], 2)
+            })
         
         # Criar DataFrame
         df = pd.DataFrame(all_combinations)
