@@ -192,21 +192,21 @@ def get_factors(load, frequency, is_main=False):
             gamma_q = 1.0
         
         if frequency == "Normal":
-            return gamma_q if is_main else psi_0
+            return gamma_q if is_main else (gamma_q * psi_0)
         elif frequency == "Frequente":
-            return 1.05 if is_main else (psi_1 if "ELS" in frequency else 1.4)
+            return (gamma_q * psi_1) if is_main else (gamma_q * psi_0)
         elif frequency == "Rara":
-            return 1.4 if is_main else 0.6
+            return gamma_q if is_main else (gamma_q * psi_0)
         elif frequency == "ELS Normal":
             return 1.0
         elif frequency == "ELS Frequente - Danos Reversíveis":
-            return psi_1 if is_main else 0.0
+            return psi_1 if is_main else psi_2
         elif frequency == "ELS Frequente - Danos Irreversíveis":
-            return 1.0 if is_main else 0.0
+            return psi_1 if is_main else psi_2
         elif frequency == "ELS Quase Permanente":
-            return psi_2 if is_main else 0.0
+            return psi_2
         elif frequency == "ELS Rara":
-            return 1.0 if is_main else 0.0
+            return 1.0 if is_main else psi_1
     elif action_info["type"] == "excepcional":
         if frequency == "Acidental":
             return 1.6
@@ -419,12 +419,6 @@ st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 st.title("Gerador de Combinações de Carga para Estruturas Metálicas")
 st.write("Insira no mínimo 4 carregamentos para gerar as combinações de carga conforme ABNT NBR 8800.")
-
-# Seleção do tipo de estrutura (não é mais necessário, pois os fatores gamma já estão definidos por categoria)
-# st.markdown('<div class="card">', unsafe_allow_html=True)
-# st.markdown("### Tipo de Estrutura")
-# structure_type = st.selectbox("Selecione o tipo de estrutura:", ["Metálica", "Pré-moldada", "Moldada"], key="structure_type")
-# st.markdown('</div>', unsafe_allow_html=True)
 
 # Entrada de número de carregamentos (mínimo 4)
 num_loads = st.number_input("Quantidade de carregamentos (mínimo 4, máximo 10):", min_value=4, max_value=10, value=4, step=1)
